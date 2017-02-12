@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
+import json
 import os
-import requests
 import sys
+import urllib2
 from urllib import urlencode
 from urlparse import parse_qsl
+import xbmc
 import xbmcgui
 import xbmcplugin
 import xbmcaddon
@@ -17,18 +19,26 @@ class HDHomeRun(object):
         self._url = args[0]
         self._handle = int(args[1])
         self._addon_path = xbmcaddon.Addon().getAddonInfo("path")
+        self._addon_name = xbmcaddon.Addon().getAddonInfo("name")
+
         self._item_art = {
             'thumb': os.path.join(self._addon_path, 'resources/hdhomerun.png'),
             'icon': os.path.join(self._addon_path, 'resources/hdhomerun.png')
         }
 
     def list_devices(self):
-        response = requests.get(self.DISCOVER_URL)
-        devices = response.json()
+        xbmc.log("Requesting device list from '{0}'".format(self.DISCOVER_URL))
+
+        try:
+            response = urllib2.urlopen(self.DISCOVER_URL)
+            devices = json.loads(response.read())
+        except:
+            self._display_error("Error retrieving device list")
+            return
 
         for device in devices:
-            device_name = "HDHomeRun {} ({})".format(device['DeviceID'],
-                                                     device['LocalIP'])
+            device_name = "HDHomeRun {0} ({1})".format(device['DeviceID'],
+                                                       device['LocalIP'])
 
             list_item = xbmcgui.ListItem(label=device_name)
             list_item.setArt(self._item_art)
@@ -44,12 +54,18 @@ class HDHomeRun(object):
         xbmcplugin.endOfDirectory(self._handle)
 
     def list_channels(self, lineup_url):
-        response = requests.get(lineup_url)
-        channels = response.json()
+        xbmc.log("Requesting channel lineup from '{0}'".format(lineup_url))
+
+        try:
+            response = urllib2.urlopen(lineup_url)
+            channels = json.loads(response.read())
+        except:
+            self._display_error("Error retrieving channel list")
+            return
 
         for channel in channels:
-            channel_name = "{} {}".format(channel['GuideNumber'],
-                                          channel['GuideName'])
+            channel_name = "{0} {1}".format(channel['GuideNumber'],
+                                            channel['GuideName'])
 
             list_item = xbmcgui.ListItem(label=channel_name)
             list_item.setInfo('video', {'title': channel_name, 'genre': 'TV'})
@@ -71,6 +87,16 @@ class HDHomeRun(object):
 
     def _get_url(self, **kwargs):
         return '{0}?{1}'.format(self._url, urlencode(kwargs))
+
+    def _log_response(self, response):
+        xbmc.log("Response code: {0}".format(response.status_code))
+        xbmc.log("Response: ")
+
+        for line in response.text.splitlines():
+            xbmc.log(line)
+
+    def _display_error(self, message):
+        xbmcgui.Dialog().ok(self._addon_name, message)
 
 
 def router(args):
